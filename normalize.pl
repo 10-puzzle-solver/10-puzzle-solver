@@ -347,6 +347,26 @@ my @rewrite_rules = (
         => sub { $+{ZERO} . '*' . '(' . $+{A} . '+' . $+{B} . ')' }
     ],
 
+    # Distributivity of multiplication by zero over addition of zeros
+    # 0' + (0 * A) => 0 * convert_to_addition(0' + A)
+    # (0 * A) + 0' => 0 * convert_to_addition(0' + A)
+    # if 0' != "0"
+    "0'+(0*A)|(0*A)+0'=>0*f(0'+A)" => [
+        qr{
+            (?:
+                $ZERO \+ \( $ZERO2 \* $A \)
+                |
+                \( $ZERO2 \* $A \) \+ $ZERO
+            )
+            (?(?{ $+{ZERO} ne '0' }) | (*FAIL) )
+        }x
+        => sub {
+            $+{ZERO2}
+            . '*'
+            . convert_to_addition('(' . $+{ZERO} . '+' . $+{A} . ')')
+        }
+    ],
+
     # Sign
     # ----
 
