@@ -5,13 +5,7 @@ my $VERBOSE = 0;
 
 my $NUMBER = qr{ (?!0\d) \d+ }x;
 my $OPERATOR = qr{ [+\-*/] }x;
-my $OPERAND = qr{
-    (
-        $NUMBER
-        |
-        \( (?-1) $OPERATOR (?-1) \)
-    )
-}x;
+my $OPERAND = qr{ ( $NUMBER | \( (?-1) $OPERATOR (?-1) \) ) }x;
 
 my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
