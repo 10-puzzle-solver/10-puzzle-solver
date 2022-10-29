@@ -50,6 +50,13 @@ sub compare {
     return $a cmp $b;
 }
 
+# Converts all operators in an expression to addition.
+sub convert_to_addition {
+    my ($expression) = @_;
+    $expression =~ s{ (?!\+) $OPERATOR }{+}gx;
+    return $expression;
+}
+
 # Takes a negative expression and returns its additive inverse in a form that
 # does not have a unary minus operator.
 sub negate {
@@ -307,6 +314,22 @@ my @rewrite_rules = (
     # Division where the dividend is zero to multiplication
     # 0 / A => 0 * A
     '0/A=>0*A' => [ qr{ $ZERO / $A }x => sub { $+{ZERO} . '*' . $+{A} } ],
+
+    # All operators in the factor of multiplication by zero to addition
+    # 0 * A => 0 * convert_to_addition(A)
+    # A * 0 => 0 * convert_to_addition(A)
+    # if A has an operator other than addition
+    '0*A|A*0=>0*f(A)' => [
+        qr{
+            (?:
+                $ZERO \* $A
+                |
+                $A \* $ZERO
+            )
+            (?(?{ $+{A} =~ m{ (?!\+) $OPERATOR }x }) | (*FAIL) )
+        }x
+        => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
+    ],
 
     # Sign
     # ----
