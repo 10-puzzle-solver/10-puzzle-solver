@@ -121,6 +121,52 @@ my @rewrite_rules = (
         => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
     ],
 
+    # Mixed addition and subtraction
+    # A + (B - C) => (A + B) - C if A != 0 and B != C
+    # (A - C) + B => (A + B) - C if B != 0 and A != C
+    # A - (C - B) => (A + B) - C
+    'A+(B-C)|(A-C)+B|A-(C-B)=>(A+B)-C' => [
+        qr{
+            $A \+ \( $B - $C \)
+            (?(?{
+                eval($+{A}) ne '0' and eval("$+{B} - $+{C}") ne '0'
+            }) | (*FAIL) )
+            |
+            \( $A - $C \) \+ $B
+            (?(?{
+                eval($+{B}) ne '0' and eval("$+{A} - $+{C}") ne '0'
+            }) | (*FAIL) )
+            |
+            $A - \( $C - $B \)
+        }x
+        => sub { '(' . $+{A} . '+' . $+{B} . ')' . '-' . $+{C} }
+    ],
+    # (A - B) - C => A - (B + C)
+    '(A-B)-C=>A-(B+C)' => [
+        qr{ \( $A - $B \) - $C }x
+        => sub { $+{A} . '-' . '(' . $+{B} . '+' . $+{C} . ')' }
+    ],
+
+    # Mixed multiplication and division
+    # A * (B / C) => (A * B) / C if A != 1
+    # (A / C) * B => (A * B) / C if B != 1
+    # A / (C / B) => (A * B) / C
+    'A*(B/C)|(A/C)*B|A/(C/B)=>(A*B)/C' => [
+        qr{
+            $A \* \( $B / $C \) (?(?{ eval($+{A}) ne '1' }) | (*FAIL) )
+            |
+            \( $A / $C \) \* $B (?(?{ eval($+{B}) ne '1' }) | (*FAIL) )
+            |
+            $A / \( $C / $B \)
+        }x
+        => sub { '(' . $+{A} . '*' . $+{B} . ')' . '/' . $+{C} }
+    ],
+    # (A / B) / C => A / (B * C)
+    '(A/B)/C=>A/(B*C)' => [
+        qr{ \( $A / $B \) / $C }x
+        => sub { $+{A} . '/' . '(' . $+{B} . '*' . $+{C} . ')' }
+    ],
+
     # Addition by zero
     # ----------------
 
@@ -285,55 +331,6 @@ my @rewrite_rules = (
             (?(?{ eval($+{A}) < 0 and eval($+{B}) < 0 }) | (*FAIL) )
         }x
         => sub { negate($+{A}) . $+{OP} . negate($+{B}) }
-    ],
-
-    # Miscellaneous
-    # -------------
-
-    # Mixed addition and subtraction
-    # A + (B - C) => (A + B) - C if A != 0 and B != C
-    # (A - C) + B => (A + B) - C if B != 0 and A != C
-    # A - (C - B) => (A + B) - C
-    'A+(B-C)|(A-C)+B|A-(C-B)=>(A+B)-C' => [
-        qr{
-            $A \+ \( $B - $C \)
-            (?(?{
-                eval($+{A}) ne '0' and eval("$+{B} - $+{C}") ne '0'
-            }) | (*FAIL) )
-            |
-            \( $A - $C \) \+ $B
-            (?(?{
-                eval($+{B}) ne '0' and eval("$+{A} - $+{C}") ne '0'
-            }) | (*FAIL) )
-            |
-            $A - \( $C - $B \)
-        }x
-        => sub { '(' . $+{A} . '+' . $+{B} . ')' . '-' . $+{C} }
-    ],
-    # (A - B) - C => A - (B + C)
-    '(A-B)-C=>A-(B+C)' => [
-        qr{ \( $A - $B \) - $C }x
-        => sub { $+{A} . '-' . '(' . $+{B} . '+' . $+{C} . ')' }
-    ],
-
-    # Mixed multiplication and division
-    # A * (B / C) => (A * B) / C if A != 1
-    # (A / C) * B => (A * B) / C if B != 1
-    # A / (C / B) => (A * B) / C
-    'A*(B/C)|(A/C)*B|A/(C/B)=>(A*B)/C' => [
-        qr{
-            $A \* \( $B / $C \) (?(?{ eval($+{A}) ne '1' }) | (*FAIL) )
-            |
-            \( $A / $C \) \* $B (?(?{ eval($+{B}) ne '1' }) | (*FAIL) )
-            |
-            $A / \( $C / $B \)
-        }x
-        => sub { '(' . $+{A} . '*' . $+{B} . ')' . '/' . $+{C} }
-    ],
-    # (A / B) / C => A / (B * C)
-    '(A/B)/C=>A/(B*C)' => [
-        qr{ \( $A / $B \) / $C }x
-        => sub { $+{A} . '/' . '(' . $+{B} . '*' . $+{C} . ')' }
     ],
 );
 
