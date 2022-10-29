@@ -54,8 +54,7 @@ sub compare {
 # does not have a unary minus operator.
 sub negate {
     my ($expression) = @_;
-    $expression =~ m{ \A \( $A $OP $B \) \z }x
-        or die "Not an expression: $expression";
+    $expression =~ m{ \A \( $A $OP $B \) \z }x or return $expression;
     my ($a, $op, $b) = @+{'A', 'OP', 'B'};
 
     # -(a - b) => (b - a)
@@ -105,6 +104,16 @@ my @rewrite_rules = (
             (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
         }x
         => sub { $+{A} . $+{OP} . $+{B} }
+    ],
+    # B + (A + C) => A + (B + C)
+    # B * (A * C) => A * (B * C)
+    # if B > A lexicographically
+    'B(AC)=>A(BC)' => [
+        qr{
+            $B (?<OP> [+*] ) \( $A \g{OP} $C \)
+            (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
+        }x
+        => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
     ],
 
     # Associativity
@@ -324,11 +333,15 @@ my @rewrite_rules = (
     # Negative multiplication and division to positive
     # A * B => (-A) * (-B)
     # A / B => (-A) / (-B)
-    # if A < 0 and B < 0
+    # if (A <= 0 and B < 0) or (A < 0 and B <= 0)
     'AB=>(-A)(-B)' => [
         qr{
             $A (?<OP> [*/] ) $B
-            (?(?{ eval($+{A}) < 0 and eval($+{B}) < 0 }) | (*FAIL) )
+            (?(?{
+                my $a = eval($+{A});
+                my $b = eval($+{B});
+                ($a <= 0 and $b < 0) or ($a < 0 and $b <= 0)
+            }) | (*FAIL) )
         }x
         => sub { negate($+{A}) . $+{OP} . negate($+{B}) }
     ],
