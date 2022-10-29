@@ -107,9 +107,7 @@ my @rewrite_rules = (
 
     # Subtraction by zero to addition
     # A - 0 => A + 0
-    'A-0=>A+0' => [
-        qr{ $A - $ZERO }x => sub { $+{A} . '+' . $+{ZERO} }
-    ],
+    'A-0=>A+0' => [ qr{ $A - $ZERO }x => sub { $+{A} . '+' . $+{ZERO} } ],
 
     # Zero times zero to addition
     # 0 * 0 => 0 + 0
@@ -122,11 +120,9 @@ my @rewrite_rules = (
     # (A + 0) . B => 0 + (A . B)
     '(0+A).B|(A+0).B=>0+(A.B)' => [
         qr{
-            (?:
-                \( $ZERO \+ $A \) $OP $B
-                |
-                \( $A \+ $ZERO \) $OP $B
-            )
+            \( $ZERO \+ $A \) $OP $B
+            |
+            \( $A \+ $ZERO \) $OP $B
         }x
         => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
     ],
@@ -150,9 +146,7 @@ my @rewrite_rules = (
 
     # Division by one to multiplication
     # A / 1 => A * 1
-    'A/1=>A*1' => [
-        qr{ $A / $ONE }x => sub { $+{A} . '*' . $+{ONE} }
-    ],
+    'A/1=>A*1' => [ qr{ $A / $ONE }x => sub { $+{A} . '*' . $+{ONE} } ],
 
     # Separation of multiplication by one
     # (1 * A) . B => 1 * (A . B)
@@ -192,9 +186,7 @@ my @rewrite_rules = (
 
     # Division where the dividend is zero to multiplication
     # 0 / A => 0 * A
-    '0/A=>0*A' => [
-        qr{ $ZERO / $A }x => sub { $+{ZERO} . '*' . $+{A} }
-    ],
+    '0/A=>0*A' => [ qr{ $ZERO / $A }x => sub { $+{ZERO} . '*' . $+{A} } ],
 
     # Sign
     # ----
@@ -228,6 +220,49 @@ my @rewrite_rules = (
             (?(?{ eval($+{A}) < 0 and eval($+{B}) < 0 }) | (*FAIL) )
         }x
         => sub { negate($+{A}) . $+{OP} . negate($+{B}) }
+    ],
+
+    # Miscellaneous
+    # -------------
+
+    # Mixed addition and subtraction
+    # A + (B - C) => (A + B) - C if A != 0
+    # (A - C) + B => (A + B) - C if B != 0
+    # A - (C - B) => (A + B) - C
+    'A+(B-C)|(A-C)+B|A-(C-B)=>(A+B)-C' => [
+        qr{
+            $A \+ \( $B - $C \) (?(?{ eval($+{A}) ne '0' }) | (*FAIL) )
+            |
+            \( $A - $C \) \+ $B (?(?{ eval($+{B}) ne '0' }) | (*FAIL) )
+            |
+            $A - \( $C - $B \)
+        }x
+        => sub { '(' . $+{A} . '+' . $+{B} . ')' . '-' . $+{C} }
+    ],
+    # (A - B) - C => A - (B + C)
+    '(A-B)-C=>A-(B+C)' => [
+        qr{ \( $A - $B \) - $C }x
+        => sub { $+{A} . '-' . '(' . $+{B} . '+' . $+{C} . ')' }
+    ],
+
+    # Mixed multiplication and division
+    # A * (B / C) => (A * B) / C if A != 1
+    # (A / C) * B => (A * B) / C if B != 1
+    # A / (C / B) => (A * B) / C
+    'A*(B/C)|(A/C)*B|A/(C/B)=>(A*B)/C' => [
+        qr{
+            $A \* \( $B / $C \) (?(?{ eval($+{A}) ne '1' }) | (*FAIL) )
+            |
+            \( $A / $C \) \* $B (?(?{ eval($+{B}) ne '1' }) | (*FAIL) )
+            |
+            $A / \( $C / $B \)
+        }x
+        => sub { '(' . $+{A} . '*' . $+{B} . ')' . '/' . $+{C} }
+    ],
+    # (A / B) / C => A / (B * C)
+    '(A/B)/C=>A/(B*C)' => [
+        qr{ \( $A / $B \) / $C }x
+        => sub { $+{A} . '/' . '(' . $+{B} . '*' . $+{C} . ')' }
     ],
 );
 
