@@ -118,19 +118,16 @@ my @rewrite_rules = (
     # Separation of addition by zero
     # (0 + A) . B => 0 + (A . B)
     # (A + 0) . B => 0 + (A . B)
-    '(0+A).B|(A+0).B=>0+(A.B)' => [
+    #
+    # A . (0 + B) => 0 + (A . B)
+    # A . (B + 0) => 0 + (A . B)
+    # if not (A == 0 and . == +)
+    '(0+A).B|(A+0).B|A.(0+B)|A.(B+0)=>0+(A.B)' => [
         qr{
             \( $ZERO \+ $A \) $OP $B
             |
             \( $A \+ $ZERO \) $OP $B
-        }x
-        => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
-    ],
-    # A . (0 + B) => 0 + (A . B)
-    # A . (B + 0) => 0 + (A . B)
-    # if not (A == 0 and . == +)
-    'A.(0+B)|A.(B+0)=>0+(A.B)' => [
-        qr{
+            |
             (?:
                 $A $OP \( $ZERO \+ $B \)
                 |
@@ -152,7 +149,11 @@ my @rewrite_rules = (
     # (1 * A) . B => 1 * (A . B)
     # (A * 1) . B => 1 * (A . B)
     # if not (B == 0 and . == +)
-    '(1*A).B|(A*1).B=>1*(A.B)' => [
+    #
+    # A . (1 * B) => 1 * (A . B)
+    # A . (B * 1) => 1 * (A . B)
+    # if not (A == 0 and . == +) and not (A == 1 and . == *)
+    '(1*A).B|(A*1).B|A.(1*B)|A.(B*1)=>1*(A.B)' => [
         qr{
             (?:
                 \( $ONE \* $A \) $OP $B
@@ -160,14 +161,7 @@ my @rewrite_rules = (
                 \( $A \* $ONE \) $OP $B
             )
             (?(?{ not (eval($+{B}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
-        }x
-        => sub { $+{ONE} . '*' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
-    ],
-    # A . (1 * B) => 1 * (A . B)
-    # A . (B * 1) => 1 * (A . B)
-    # if not (A == 0 and . == +) and not (A == 1 and . == *)
-    'A.(1*B)|A.(B*1)=>1*(A.B)' => [
-        qr{
+            |
             (?:
                 $A $OP \( $ONE \* $B \)
                 |

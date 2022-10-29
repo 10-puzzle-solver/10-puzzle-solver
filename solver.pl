@@ -27,7 +27,7 @@ while (my $number_combination = $iterator->next()) {
     my $problem = join('', @$number_combination);
 
 # DEBUG
-# if (not $flag and $problem ne '0000') {
+# if (not $flag and $problem ne '1125') {
 #     next;
 # }
 # $flag = 1;
