@@ -202,15 +202,9 @@ my @rewrite_rules = (
     # if not (A == 0 and . == +)
     '(0+A).B|(A+0).B|A.(0+B)|A.(B+0)=>0+(A.B)' => [
         qr{
-            \( $ZERO \+ $A \) $OP $B
+            \( (?: $ZERO \+ $A | $A \+ $ZERO ) \) $OP $B
             |
-            \( $A \+ $ZERO \) $OP $B
-            |
-            (?:
-                $A $OP \( $ZERO \+ $B \)
-                |
-                $A $OP \( $B \+ $ZERO \)
-            )
+            $A $OP \( (?: $ZERO \+ $B | $B \+ $ZERO ) \)
             (?(?{ not (eval($+{A}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
         }x
         => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
@@ -220,21 +214,13 @@ my @rewrite_rules = (
     # (A + B) - B => A + (B - B)
     # (B + A) - B => A + (B - B)
     '(A+B)-B|(B+A)-B=>A+(B-B)' => [
-        qr{
-            \( $A \+ $B \) - $B2
-            |
-            \( $B \+ $A \) - $B2
-        }x
+        qr{ \( (?: $A \+ $B | $B \+ $A ) \) - $B2 }x
         => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
     ],
     # (A + (B + C)) - C => (A + B) + (C - C)
     # (A + (C + B)) - C => (A + B) + (C - C)
     '(A+(B+C))-C|(A+(C+B))-C=>(A+B)+(C-C)' => [
-        qr{
-            \( $A \+ \( $B \+ $C \) \) - $C2
-            |
-            \( $A \+ \( $C \+ $B \) \) - $C2
-        }x
+        qr{ \( $A \+ \( (?: $B \+ $C | $C \+ $B ) \) \) - $C2 }x
         => sub {
             '(' . $+{A} . '+' . $+{B} . ')'
             . '+'
@@ -246,21 +232,13 @@ my @rewrite_rules = (
     # (A * B) / B => A + (B - B)
     # (B * A) / B => A + (B - B)
     '(A*B)/B|(B*A)/B=>A+(B-B)' => [
-        qr{
-            \( $A \* $B \) / $B2
-            |
-            \( $B \* $A \) / $B2
-        }x
+        qr{ \( (?: $A \* $B | $B \* $A ) \) / $B2 }x
         => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
     ],
     # (A * (B * C)) / C => (A * B) + (C - C)
     # (A * (C * B)) / C => (A * B) + (C - C)
     '(A*(B*C))/C|(A*(C*B))/C=>(A*B)+(C-C)' => [
-        qr{
-            \( $A \* \( $B \* $C \) \) / $C2
-            |
-            \( $A \* \( $C \* $B \) \) / $C2
-        }x
+        qr{ \( $A \* \( (?: $B \* $C | $C \* $B ) \) \) / $C2 }x
         => sub {
             '(' . $+{A} . '*' . $+{B} . ')'
             . '+'
@@ -285,21 +263,13 @@ my @rewrite_rules = (
     # if not (A == 0 and . == +) and not (A == 1 and . == *)
     '(1*A).B|(A*1).B|A.(1*B)|A.(B*1)=>1*(A.B)' => [
         qr{
-            (?:
-                \( $ONE \* $A \) $OP $B
-                |
-                \( $A \* $ONE \) $OP $B
-            )
+            \( (?: $ONE \* $A | $A \* $ONE ) \) $OP $B
             (?(?{
                 not (eval($+{B}) eq '0' and $+{OP} eq '+')
                 and not (eval($+{B}) eq '1' and $+{OP} eq '*')
             }) | (*FAIL) )
             |
-            (?:
-                $A $OP \( $ONE \* $B \)
-                |
-                $A $OP \( $B \* $ONE \)
-            )
+            $A $OP \( (?: $ONE \* $B | $B \* $ONE ) \)
             (?(?{
                 not (eval($+{A}) eq '0' and $+{OP} eq '+')
                 and not (eval($+{A}) eq '1' and $+{OP} eq '*')
@@ -321,11 +291,7 @@ my @rewrite_rules = (
     # if A has an operator other than addition
     '0*A|A*0=>0*f(A)' => [
         qr{
-            (?:
-                $ZERO \* $A
-                |
-                $A \* $ZERO
-            )
+            (?: $ZERO \* $A | $A \* $ZERO )
             (?(?{ $+{A} =~ m{ (?!\+) $OPERATOR }x }) | (*FAIL) )
         }x
         => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
@@ -336,13 +302,9 @@ my @rewrite_rules = (
     # A * (B * 0) => 0 * (A + B)
     '(0*A)*B|(A*0)*B|A*(0*B)|A*(B*0)=>0*(A+B)' => [
         qr{
-            \( $ZERO \* $A \) \* $B
+            \( (?: $ZERO \* $A | $A \* $ZERO ) \) \* $B
             |
-            \( $A \* $ZERO \) \* $B
-            |
-            $A \* \( $ZERO \* $B \)
-            |
-            $A \* \( $B \* $ZERO \)
+            $A \* \( (?: $ZERO \* $B | $B \* $ZERO ) \)
         }x
         => sub { $+{ZERO} . '*' . '(' . $+{A} . '+' . $+{B} . ')' }
     ],
@@ -356,13 +318,9 @@ my @rewrite_rules = (
     "0'+(0*A)|0'+(A*0)|(0*A)+0'|(A*0)+0'=>0*f(0'+A)" => [
         qr{
             (?:
-                $ZERO \+ \( $ZERO2 \* $A \)
+                $ZERO \+ \( (?: $ZERO2 \* $A | $A \* $ZERO2 ) \)
                 |
-                $ZERO \+ \( $A \* $ZERO2 \)
-                |
-                \( $ZERO2 \* $A \) \+ $ZERO
-                |
-                \( $A \* $ZERO2 \) \+ $ZERO
+                \( (?: $ZERO2 \* $A | $A \* $ZERO2 ) \) \+ $ZERO
             )
             (?(?{ $+{ZERO} ne '0' }) | (*FAIL) )
         }x
