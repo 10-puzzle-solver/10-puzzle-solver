@@ -330,6 +330,22 @@ my @rewrite_rules = (
         }x
         => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
     ],
+    # (0 * A) * B => 0 * (A + B)
+    # (A * 0) * B => 0 * (A + B)
+    # A * (0 * B) => 0 * (A + B)
+    # A * (B * 0) => 0 * (A + B)
+    '(0*A)*B|(A*0)*B|A*(0*B)|A*(B*0)=>0*(A+B)' => [
+        qr{
+            \( $ZERO \* $A \) \* $B
+            |
+            \( $A \* $ZERO \) \* $B
+            |
+            $A \* \( $ZERO \* $B \)
+            |
+            $A \* \( $B \* $ZERO \)
+        }x
+        => sub { $+{ZERO} . '*' . '(' . $+{A} . '+' . $+{B} . ')' }
+    ],
 
     # Sign
     # ----
