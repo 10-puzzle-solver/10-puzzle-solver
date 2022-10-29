@@ -17,7 +17,13 @@ my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
 my $A = qr{ (?<A> $OPERAND ) }x;
 my $B = qr{ (?<B> $OPERAND ) }x;
+my $B2 = qr{
+    (?<B2> $OPERAND ) (?(?{ eval("$+{B2} - $+{B}") eq '0' }) | (*FAIL) )
+}x;
 my $C = qr{ (?<C> $OPERAND ) }x;
+my $C2 = qr{
+    (?<C2> $OPERAND ) (?(?{ eval("$+{C2} - $+{C}") eq '0' }) | (*FAIL) )
+}x;
 
 my $ZERO = qr{
     (?<ZERO> $OPERAND ) (?(?{ eval($+{ZERO}) eq '0' }) | (*FAIL) )
@@ -138,6 +144,58 @@ my @rewrite_rules = (
         => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
     ],
 
+    # Separation of addition by (X - X)
+    # (A + B) - B => A + (B - B)
+    # (B + A) - B => A + (B - B)
+    '(A+B)-B|(B+A)-B=>A+(B-B)' => [
+        qr{
+            \( $A \+ $B \) - $B2
+            |
+            \( $B \+ $A \) - $B2
+        }x
+        => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
+    ],
+    # (A + (B + C)) - C => (A + B) + (C - C)
+    # (A + (C + B)) - C => (A + B) + (C - C)
+    '(A+(B+C))-C|(A+(C+B))-C=>(A+B)+(C-C)' => [
+        qr{
+            \( $A \+ \( $B \+ $C \) \) - $C2
+            |
+            \( $A \+ \( $C \+ $B \) \) - $C2
+        }x
+        => sub {
+            '(' . $+{A} . '+' . $+{B} . ')'
+            . '+'
+            . '(' . $+{C} . '-' . $+{C2} . ')'
+        }
+    ],
+
+    # Multiplication by (X / X) to addition by (X - X)
+    # (A * B) / B => A + (B - B)
+    # (B * A) / B => A + (B - B)
+    '(A*B)/B|(B*A)/B=>A+(B-B)' => [
+        qr{
+            \( $A \* $B \) / $B2
+            |
+            \( $B \* $A \) / $B2
+        }x
+        => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
+    ],
+    # (A * (B * C)) / C => (A * B) + (C - C)
+    # (A * (C * B)) / C => (A * B) + (C - C)
+    '(A*(B*C))/C|(A*(C*B))/C=>(A*B)+(C-C)' => [
+        qr{
+            \( $A \* \( $B \* $C \) \) / $C2
+            |
+            \( $A \* \( $C \* $B \) \) / $C2
+        }x
+        => sub {
+            '(' . $+{A} . '*' . $+{B} . ')'
+            . '+'
+            . '(' . $+{C} . '-' . $+{C2} . ')'
+        }
+    ],
+
     # Multiplication by one
     # ---------------------
 
@@ -220,14 +278,20 @@ my @rewrite_rules = (
     # -------------
 
     # Mixed addition and subtraction
-    # A + (B - C) => (A + B) - C if A != 0
-    # (A - C) + B => (A + B) - C if B != 0
+    # A + (B - C) => (A + B) - C if A != 0 and B != C
+    # (A - C) + B => (A + B) - C if B != 0 and A != C
     # A - (C - B) => (A + B) - C
     'A+(B-C)|(A-C)+B|A-(C-B)=>(A+B)-C' => [
         qr{
-            $A \+ \( $B - $C \) (?(?{ eval($+{A}) ne '0' }) | (*FAIL) )
+            $A \+ \( $B - $C \)
+            (?(?{
+                eval($+{A}) ne '0' and eval("$+{B} - $+{C}") ne '0'
+            }) | (*FAIL) )
             |
-            \( $A - $C \) \+ $B (?(?{ eval($+{B}) ne '0' }) | (*FAIL) )
+            \( $A - $C \) \+ $B
+            (?(?{
+                eval($+{B}) ne '0' and eval("$+{A} - $+{C}") ne '0'
+            }) | (*FAIL) )
             |
             $A - \( $C - $B \)
         }x
