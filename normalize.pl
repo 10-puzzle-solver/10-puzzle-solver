@@ -16,10 +16,12 @@ my $OPERAND = qr{
 my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
 my $A = qr{ (?<A> $OPERAND ) }x;
+
 my $B = qr{ (?<B> $OPERAND ) }x;
 my $B2 = qr{
     (?<B2> $OPERAND ) (?(?{ eval("$+{B2} - $+{B}") eq '0' }) | (*FAIL) )
 }x;
+
 my $C = qr{ (?<C> $OPERAND ) }x;
 my $C2 = qr{
     (?<C2> $OPERAND ) (?(?{ eval("$+{C2} - $+{C}") eq '0' }) | (*FAIL) )
@@ -89,10 +91,21 @@ my @rewrite_rules = (
     # Commutativity
     # B + A => A + B
     # B * A => A * B
+    #
+    # B - A => A - B
+    # B / A => A / B
+    # if B == A
+    #
     # if B > A lexicographically
     'BA=>AB' => [
         qr{
-            $B (?<OP> [+*] ) $A (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
+            (?:
+                $B (?<OP> [+*] ) $A
+                |
+                $B (?<OP> [-/] ) $A
+                (?(?{ eval("$+{B} - $+{A}") eq '0' }) | (*FAIL) )
+            )
+            (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
         }x
         => sub { $+{A} . $+{OP} . $+{B} }
     ],
