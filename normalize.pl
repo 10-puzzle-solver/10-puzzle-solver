@@ -16,12 +16,10 @@ my $OPERAND = qr{
 my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
 my $A = qr{ (?<A> $OPERAND ) }x;
-
 my $B = qr{ (?<B> $OPERAND ) }x;
 my $B2 = qr{
     (?<B2> $OPERAND ) (?(?{ eval("$+{B2} - $+{B}") eq '0' }) | (*FAIL) )
 }x;
-
 my $C = qr{ (?<C> $OPERAND ) }x;
 my $C2 = qr{
     (?<C2> $OPERAND ) (?(?{ eval("$+{C2} - $+{C}") eq '0' }) | (*FAIL) )
@@ -33,7 +31,6 @@ my $ZERO = qr{
 my $ZERO2 = qr{
     (?<ZERO2> $OPERAND ) (?(?{ eval($+{ZERO2}) eq '0' }) | (*FAIL) )
 }x;
-
 my $ONE = qr{ (?<ONE> $OPERAND ) (?(?{ eval($+{ONE}) eq '1' }) | (*FAIL) ) }x;
 
 sub normalize_for_comparison {
@@ -265,7 +262,7 @@ my @rewrite_rules = (
     # Separation of multiplication by one
     # (1 * A) . B => 1 * (A . B)
     # (A * 1) . B => 1 * (A . B)
-    # if not (B == 0 and . == +)
+    # if not (B == 0 and . == +) and not (B == 1 and . == *)
     #
     # A . (1 * B) => 1 * (A . B)
     # A . (B * 1) => 1 * (A . B)
@@ -277,7 +274,10 @@ my @rewrite_rules = (
                 |
                 \( $A \* $ONE \) $OP $B
             )
-            (?(?{ not (eval($+{B}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
+            (?(?{
+                not (eval($+{B}) eq '0' and $+{OP} eq '+')
+                and not (eval($+{B}) eq '1' and $+{OP} eq '*')
+            }) | (*FAIL) )
             |
             (?:
                 $A $OP \( $ONE \* $B \)
@@ -374,8 +374,7 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '((0 + 0) + 1) + 9',
-        '(0 + (0 + 1)) + 9',
+        '((0 + 0) * 1) * 1',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");

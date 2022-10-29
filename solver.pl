@@ -5,7 +5,10 @@ use ntheory ('formultiperm', 'forsetproduct');
 
 require './normalize.pl';
 
-my $NUMBER_TO_MAKE = 10;
+my $NUMBER_TO_MAKE = shift(@ARGV);
+if (not defined($NUMBER_TO_MAKE)) {
+    $NUMBER_TO_MAKE = 10;
+}
 
 my @numbers = (0 .. 9);
 my @operators = ('+', '-', '*', '/');
@@ -27,7 +30,7 @@ while (my $number_combination = $iterator->next()) {
     my $problem = join('', @$number_combination);
 
 # DEBUG
-# if (not $flag and $problem ne '1125') {
+# if (not $flag and $problem ne '0011') {
 #     next;
 # }
 # $flag = 1;
@@ -56,6 +59,9 @@ while (my $number_combination = $iterator->next()) {
                 }
 
                 if ($value eq $NUMBER_TO_MAKE) {
+# DEBUG
+# warn("$expression\n");
+
                     my $normal_form = normalize($expression);
                     if (not exists($seen{$normal_form})) {
                         push(@solutions, $normal_form);
