@@ -233,7 +233,7 @@ my @rewrite_rules = (
 
 sub warn_step {
     my ($expression, $rule_name) = @_;
-    $expression =~ s{ ( $OPERATOR ) }{ $1 }gx;
+    $expression =~ s{$OP}{ $+{OP} }g;
     warn("=> $expression\t$rule_name\n");
 }
 

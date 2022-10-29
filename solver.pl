@@ -19,7 +19,7 @@ my @patterns = (
 );
 
 # DEBUG
-my $flag;
+# my $flag;
 
 # Generates 10 multichoose 4 = 715 possible puzzles from 0000 to 9999.
 my $iterator = combinations_with_repetition(\@numbers, $number_of_numbers);
@@ -27,10 +27,10 @@ while (my $number_combination = $iterator->next()) {
     my $problem = join('', @$number_combination);
 
 # DEBUG
-if (not $flag and $problem ne '0000') {
-    next;
-}
-$flag = 1;
+# if (not $flag and $problem ne '0000') {
+#     next;
+# }
+# $flag = 1;
 
     my %seen;
     my @solutions;
