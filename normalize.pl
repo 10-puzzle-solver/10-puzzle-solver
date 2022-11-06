@@ -25,6 +25,23 @@ my $ZERO2 = qr{
 }x;
 my $ONE = qr{ (?<ONE> $OPERAND ) (?(?{ eval($+{ONE}) eq '1' }) | (*FAIL) ) }x;
 
+my $A_PLUS_ZERO = qr{ $A \+ $ZERO | $ZERO \+ $A }x;
+my $B_PLUS_ZERO = qr{ $B \+ $ZERO | $ZERO \+ $B }x;
+
+my $A_TIMES_ONE = qr{ $A \* $ONE | $ONE \* $A }x;
+my $B_TIMES_ONE = qr{ $B \* $ONE | $ONE \* $B }x;
+
+my $A_TIMES_ZERO = qr{ $A \* $ZERO | $ZERO \* $A }x;
+my $B_TIMES_ZERO = qr{ $B \* $ZERO | $ZERO \* $B }x;
+
+my $A_PLUS_X = qr{ $A \+ $X | $X \+ $A }x;
+my $B_PLUS_X = qr{ $B \+ $X | $X \+ $B }x;
+my $B_PLUS_X2 = qr{ $B \+ $X2 | $X2 \+ $B }x;
+
+my $A_TIMES_X = qr{ $A \* $X | $X \* $A }x;
+my $B_TIMES_X = qr{ $B \* $X | $X \* $B }x;
+my $B_TIMES_X2 = qr{ $B \* $X2 | $X2 \* $B }x;
+
 sub normalize_for_comparison {
     my ($expression) = @_;
 
@@ -186,47 +203,36 @@ my @rewrite_rules = (
     ],
 
     # Separation of addition by zero
-    # (0 + A) . B => 0 + (A . B)
     # (A + 0) . B => 0 + (A . B)
-    #
-    # A . (0 + B) => 0 + (A . B)
-    # A . (B + 0) => 0 + (A . B)
-    # if not (A == 0 and . == +)
-    '(0+A).B|(A+0).B|A.(0+B)|A.(B+0)=>0+(A.B)' => [
+    # A . (B + 0) => 0 + (A . B) if not (A == 0 and . == +)
+    '(A+0).B|A.(B+0)=>0+(A.B)' => [
         qr{
-            \( (?: $ZERO \+ $A | $A \+ $ZERO ) \) $OP $B
+            \( $A_PLUS_ZERO \) $OP $B
             |
-            $A $OP \( (?: $ZERO \+ $B | $B \+ $ZERO ) \)
+            $A $OP \( $B_PLUS_ZERO \)
             (?(?{ not (eval($+{A}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
         }x
         => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
     ],
 
     # Separation of addition by (X - X)
-    # (X + A) - X => (X - X) + A
     # (A + X) - X => (X - X) + A
-    '(X+A)-X|(A+X)-X=>(X-X)+A' => [
-        qr{ \( (?: $X \+ $A | $A \+ $X ) \) - $X2 }x
+    '(A+X)-X=>(X-X)+A' => [
+        qr{ \( $A_PLUS_X \) - $X2 }x
         => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
-    # (A + (X + B)) - X => (X - X) + (A + B)
     # (A + (B + X)) - X => (X - X) + (A + B)
-    '(A+(X+B))-X|(A+(B+X))-X=>(X-X)+(A+B)' => [
-        qr{ \( $A \+ \( (?: $X \+ $B | $B \+ $X ) \) \) - $X2 }x
+    '(A+(B+X))-X=>(X-X)+(A+B)' => [
+        qr{ \( $A \+ \( $B_PLUS_X \) \) - $X2 }x
         => sub {
             '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
             . '(' . $+{A} . '+' . $+{B} . ')'
         }
     ],
-    # (X + A) - (X + B) => (X - X) + (A - B)
-    # (X + A) - (B + X) => (X - X) + (A - B)
-    # (A + X) - (X + B) => (X - X) + (A - B)
     # (A + X) - (B + X) => (X - X) + (A - B)
-    '(X+A)-(X+B)|(X+A)-(B+X)|(A+X)-(X+B)|(A+X)-(B+X)=>(X-X)+(A-B)' => [
-        qr{
-            \( (?: $X \+ $A | $A \+ $X ) \) - \( (?: $X2 \+ $B | $B \+ $X2 ) \)
-        }x
+    '(A+X)-(B+X)=>(X-X)+(A-B)' => [
+        qr{ \( $A_PLUS_X \) - \( $B_PLUS_X2 \) }x
         => sub {
             '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
@@ -235,30 +241,23 @@ my @rewrite_rules = (
     ],
 
     # Multiplication by (X / X) to addition by (X - X)
-    # (X * A) / X => (X - X) + A
     # (A * X) / X => (X - X) + A
-    '(X*A)/X|(A*X)/X=>(X-X)+A' => [
-        qr{ \( (?: $X \* $A | $A \* $X ) \) / $X2 }x
+    '(A*X)/X=>(X-X)+A' => [
+        qr{ \( $A_TIMES_X \) / $X2 }x
         => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
-    # (A * (X * B)) / X => (X - X) + (A * B)
     # (A * (B * X)) / X => (X - X) + (A * B)
-    '(A*(X*B))/X|(A*(B*X))/X=>(X-X)+(A*B)' => [
-        qr{ \( $A \* \( (?: $X \* $B | $B \* $X ) \) \) / $X2 }x
+    '(A*(B*X))/X=>(X-X)+(A*B)' => [
+        qr{ \( $A \* \( $B_TIMES_X \) \) / $X2 }x
         => sub {
             '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
             . '(' . $+{A} . '*' . $+{B} . ')'
         }
     ],
-    # (X * A) / (X * B) => (X - X) + (A / B)
-    # (X * A) / (B * X) => (X - X) + (A / B)
-    # (A * X) / (X * B) => (X - X) + (A / B)
     # (A * X) / (B * X) => (X - X) + (A / B)
-    '(X-X)+(A/B)' => [
-        qr{
-            \( (?: $X \* $A | $A \* $X ) \) / \( (?: $X2 \* $B | $B \* $X2 ) \)
-        }x
+    '(A*X)/(B*X)=>(X-X)+(A/B)' => [
+        qr{ \( $A_TIMES_X \) / \( $B_TIMES_X2 \) }x
         => sub {
             '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
@@ -274,22 +273,20 @@ my @rewrite_rules = (
     'A/1=>A*1' => [ qr{ $A / $ONE }x => sub { $+{A} . '*' . $+{ONE} } ],
 
     # Separation of multiplication by one
-    # (1 * A) . B => 1 * (A . B)
     # (A * 1) . B => 1 * (A . B)
     # if not (B == 0 and . == +) and not (B == 1 and . == *)
     #
-    # A . (1 * B) => 1 * (A . B)
     # A . (B * 1) => 1 * (A . B)
     # if not (A == 0 and . == +) and not (A == 1 and . == *)
-    '(1*A).B|(A*1).B|A.(1*B)|A.(B*1)=>1*(A.B)' => [
+    '(A*1).B|A.(B*1)=>1*(A.B)' => [
         qr{
-            \( (?: $ONE \* $A | $A \* $ONE ) \) $OP $B
+            \( $A_TIMES_ONE \) $OP $B
             (?(?{
                 not (eval($+{B}) eq '0' and $+{OP} eq '+')
                 and not (eval($+{B}) eq '1' and $+{OP} eq '*')
             }) | (*FAIL) )
             |
-            $A $OP \( (?: $ONE \* $B | $B \* $ONE ) \)
+            $A $OP \( $B_TIMES_ONE \)
             (?(?{
                 not (eval($+{A}) eq '0' and $+{OP} eq '+')
                 and not (eval($+{A}) eq '1' and $+{OP} eq '*')
@@ -306,26 +303,18 @@ my @rewrite_rules = (
     '0/A=>0*A' => [ qr{ $ZERO / $A }x => sub { $+{ZERO} . '*' . $+{A} } ],
 
     # All operators in the factor of multiplication by zero to addition
-    # 0 * A => 0 * convert_to_addition(A)
     # A * 0 => 0 * convert_to_addition(A)
     # if A has an operator other than addition
-    '0*A|A*0=>0*f(A)' => [
+    'A*0=>0*f(A)' => [
         qr{
-            (?: $ZERO \* $A | $A \* $ZERO )
-            (?(?{ $+{A} =~ m{ (?!\+) $OPERATOR }x }) | (*FAIL) )
+            $A_TIMES_ZERO (?(?{ $+{A} =~ m{ (?!\+) $OPERATOR }x }) | (*FAIL) )
         }x
         => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
     ],
-    # (0 * A) * B => 0 * convert_to_addition(A + B)
     # (A * 0) * B => 0 * convert_to_addition(A + B)
-    # A * (0 * B) => 0 * convert_to_addition(A + B)
     # A * (B * 0) => 0 * convert_to_addition(A + B)
-    '(0*A)*B|(A*0)*B|A*(0*B)|A*(B*0)=>0*f(A+B)' => [
-        qr{
-            \( (?: $ZERO \* $A | $A \* $ZERO ) \) \* $B
-            |
-            $A \* \( (?: $ZERO \* $B | $B \* $ZERO ) \)
-        }x
+    '(A*0)*B|A*(B*0)=>0*f(A+B)' => [
+        qr{ \( $A_TIMES_ZERO \) \* $B | $A \* \( $B_TIMES_ZERO \) }x
         => sub {
             $+{ZERO}
             . '*'
@@ -334,18 +323,10 @@ my @rewrite_rules = (
     ],
 
     # Addition by zero to a factor of multiplication by zero
-    # (0 * A) + 0' => 0 * convert_to_addition(0' + A)
-    # (A * 0) + 0' => 0 * convert_to_addition(0' + A)
-    # 0' + (0 * A) => 0 * convert_to_addition(0' + A)
-    # 0' + (A * 0) => 0 * convert_to_addition(0' + A)
-    # if 0' != "0"
-    "(0*A)+0'|(A*0)+0'|0'+(0*A)|0'+(A*0)=>0*f(0'+A)" => [
+    # (A * 0) + 0' => 0 * convert_to_addition(0' + A) if 0' != "0"
+    "(A*0)+0'=>0*f(0'+A)" => [
         qr{
-            (?:
-                \( (?: $ZERO \* $A | $A \* $ZERO ) \) \+ $ZERO2
-                |
-                $ZERO2 \+ \( (?: $ZERO \* $A | $A \* $ZERO ) \)
-            )
+            (?: \( $A_TIMES_ZERO \) \+ $ZERO2 | $ZERO2 \+ \( $A_TIMES_ZERO \) )
             (?(?{ $+{ZERO2} ne '0' }) | (*FAIL) )
         }x
         => sub {
@@ -356,16 +337,9 @@ my @rewrite_rules = (
     ],
 
     # Multiplication by one to a factor of multiplication by zero
-    # (0 * A) + (1 * B) => (0 * convert_to_addition(1 + A)) + B
-    # (0 * A) + (B * 1) => (0 * convert_to_addition(1 + A)) + B
-    # (A * 0) + (1 * B) => (0 * convert_to_addition(1 + A)) + B
     # (A * 0) + (B * 1) => (0 * convert_to_addition(1 + A)) + B
-    "(0*A)+(1*B)|(0*A)+(B*1)|(A*0)+(1*B)|(A*0)+(B*1)=>(0*f(1+A))+B" => [
-        qr{
-            \( (?: $ZERO \* $A | $A \* $ZERO ) \)
-            \+
-            \( (?: $ONE \* $B | $B \* $ONE ) \)
-        }x
+    "(A*0)+(B*1)=>(0*f(1+A))+B" => [
+        qr{ \( $A_TIMES_ZERO \) \+ \( $B_TIMES_ONE \) }x
         => sub {
             '('
             . $+{ZERO}
