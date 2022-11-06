@@ -250,8 +250,13 @@ my @rewrite_rules = (
         }
     ],
     # (A * X) / (B * X) => (X - X) + (A / B)
-    '(A*X)/(B*X)=>(X-X)+(A/B)' => [
-        qr{ \( $A_TIMES_X \) / \( $B_TIMES_X2 \) }x
+    # (A / X) * (X / B) => (X - X) + (A / B)
+    '(A*X)/(B*X)|(A/X)*(X/B)=>(X-X)+(A/B)' => [
+        qr{
+            \( $A_TIMES_X \) / \( $B_TIMES_X2 \)
+            |
+            \( $A / $X \) \* \( $X2 / $B \) | \( $X / $B \) \* \( $A / $X2 \)
+        }x
         => sub {
             '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
@@ -424,7 +429,7 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '(9+9)-(9+9)',
+        '(9/9)*(9/9)',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");
