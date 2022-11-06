@@ -251,6 +251,20 @@ my @rewrite_rules = (
             . '(' . $+{A} . '*' . $+{B} . ')'
         }
     ],
+    # (X * A) / (X * B) => (X - X) + (A / B)
+    # (X * A) / (B * X) => (X - X) + (A / B)
+    # (A * X) / (X * B) => (X - X) + (A / B)
+    # (A * X) / (B * X) => (X - X) + (A / B)
+    '(X-X)+(A/B)' => [
+        qr{
+            \( (?: $X \* $A | $A \* $X ) \) / \( (?: $X2 \* $B | $B \* $X2 ) \)
+        }x
+        => sub {
+            '(' . $+{X} . '-' . $+{X2} . ')'
+            . '+'
+            . '(' . $+{A} . '/' . $+{B} . ')'
+        }
+    ],
 
     # Multiplication by one
     # ---------------------
@@ -302,38 +316,64 @@ my @rewrite_rules = (
         }x
         => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
     ],
-    # (0 * A) * B => 0 * (A + B)
-    # (A * 0) * B => 0 * (A + B)
-    # A * (0 * B) => 0 * (A + B)
-    # A * (B * 0) => 0 * (A + B)
-    '(0*A)*B|(A*0)*B|A*(0*B)|A*(B*0)=>0*(A+B)' => [
+    # (0 * A) * B => 0 * convert_to_addition(A + B)
+    # (A * 0) * B => 0 * convert_to_addition(A + B)
+    # A * (0 * B) => 0 * convert_to_addition(A + B)
+    # A * (B * 0) => 0 * convert_to_addition(A + B)
+    '(0*A)*B|(A*0)*B|A*(0*B)|A*(B*0)=>0*f(A+B)' => [
         qr{
             \( (?: $ZERO \* $A | $A \* $ZERO ) \) \* $B
             |
             $A \* \( (?: $ZERO \* $B | $B \* $ZERO ) \)
         }x
-        => sub { $+{ZERO} . '*' . '(' . $+{A} . '+' . $+{B} . ')' }
+        => sub {
+            $+{ZERO}
+            . '*'
+            . convert_to_addition('(' . $+{A} . '+' . $+{B} . ')')
+        }
     ],
 
-    # Distributivity of multiplication by zero over addition of zeros
-    # 0' + (0 * A) => 0 * convert_to_addition(0' + A)
-    # 0' + (A * 0) => 0 * convert_to_addition(0' + A)
+    # Addition by zero to a factor of multiplication by zero
     # (0 * A) + 0' => 0 * convert_to_addition(0' + A)
     # (A * 0) + 0' => 0 * convert_to_addition(0' + A)
+    # 0' + (0 * A) => 0 * convert_to_addition(0' + A)
+    # 0' + (A * 0) => 0 * convert_to_addition(0' + A)
     # if 0' != "0"
-    "0'+(0*A)|0'+(A*0)|(0*A)+0'|(A*0)+0'=>0*f(0'+A)" => [
+    "(0*A)+0'|(A*0)+0'|0'+(0*A)|0'+(A*0)=>0*f(0'+A)" => [
         qr{
             (?:
-                $ZERO \+ \( (?: $ZERO2 \* $A | $A \* $ZERO2 ) \)
+                \( (?: $ZERO \* $A | $A \* $ZERO ) \) \+ $ZERO2
                 |
-                \( (?: $ZERO2 \* $A | $A \* $ZERO2 ) \) \+ $ZERO
+                $ZERO2 \+ \( (?: $ZERO \* $A | $A \* $ZERO ) \)
             )
-            (?(?{ $+{ZERO} ne '0' }) | (*FAIL) )
+            (?(?{ $+{ZERO2} ne '0' }) | (*FAIL) )
         }x
         => sub {
-            $+{ZERO2}
+            $+{ZERO}
             . '*'
-            . convert_to_addition('(' . $+{ZERO} . '+' . $+{A} . ')')
+            . convert_to_addition('(' . $+{ZERO2} . '+' . $+{A} . ')')
+        }
+    ],
+
+    # Multiplication by one to a factor of multiplication by zero
+    # (0 * A) + (1 * B) => (0 * convert_to_addition(1 + A)) + B
+    # (0 * A) + (B * 1) => (0 * convert_to_addition(1 + A)) + B
+    # (A * 0) + (1 * B) => (0 * convert_to_addition(1 + A)) + B
+    # (A * 0) + (B * 1) => (0 * convert_to_addition(1 + A)) + B
+    "(0*A)+(1*B)|(0*A)+(B*1)|(A*0)+(1*B)|(A*0)+(B*1)=>(0*f(1+A))+B" => [
+        qr{
+            \( (?: $ZERO \* $A | $A \* $ZERO ) \)
+            \+
+            \( (?: $ONE \* $B | $B \* $ONE ) \)
+        }x
+        => sub {
+            '('
+            . $+{ZERO}
+            . '*'
+            . convert_to_addition('(' . $+{ONE} . '+' . $+{A} . ')')
+            . ')'
+            . '+'
+            . $+{B}
         }
     ],
 
