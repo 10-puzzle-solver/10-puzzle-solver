@@ -42,20 +42,14 @@ my $A_TIMES_X = qr{ $A \* $X | $X \* $A }x;
 my $B_TIMES_X = qr{ $B \* $X | $X \* $B }x;
 my $B_TIMES_X2 = qr{ $B \* $X2 | $X2 \* $B }x;
 
-sub normalize_for_comparison {
-    my ($expression) = @_;
-
-    # Removes the leading open parentheses.
-    $expression =~ s{ \A \(+ }{}x;
-
-    return $expression;
-}
-
 # Defines the order of operands for commutativity.
 sub compare {
     my ($a, $b) = @_;
-    $a = normalize_for_comparison($a);
-    $b = normalize_for_comparison($b);
+
+    # Removes the leading open parentheses.
+    $a =~ s{ \A \(+ }{}x;
+    $b =~ s{ \A \(+ }{}x;
+
     return $a cmp $b;
 }
 
@@ -70,7 +64,7 @@ sub convert_to_addition {
 # does not have a unary minus operator.
 sub negate {
     my ($expression) = @_;
-    $expression =~ m{ \A \( $A $OP $B \) \z }x or return $expression;
+    $expression =~ m{ $A $OP $B }x or return $expression;
     my ($a, $op, $b) = @+{'A', 'OP', 'B'};
 
     # -(a - b) => (b - a)
