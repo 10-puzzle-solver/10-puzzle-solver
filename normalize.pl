@@ -11,12 +11,10 @@ my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
 my $A = qr{ (?<A> $OPERAND ) }x;
 my $B = qr{ (?<B> $OPERAND ) }x;
-my $B2 = qr{
-    (?<B2> $OPERAND ) (?(?{ eval("$+{B2} - $+{B}") eq '0' }) | (*FAIL) )
-}x;
 my $C = qr{ (?<C> $OPERAND ) }x;
-my $C2 = qr{
-    (?<C2> $OPERAND ) (?(?{ eval("$+{C2} - $+{C}") eq '0' }) | (*FAIL) )
+my $X = qr{ (?<X> $OPERAND ) }x;
+my $X2 = qr{
+    (?<X2> $OPERAND ) (?(?{ eval("$+{X2} - $+{X}") eq '0' }) | (*FAIL) )
 }x;
 
 my $ZERO = qr{
@@ -205,38 +203,54 @@ my @rewrite_rules = (
     ],
 
     # Separation of addition by (X - X)
-    # (A + B) - B => A + (B - B)
-    # (B + A) - B => A + (B - B)
-    '(A+B)-B|(B+A)-B=>A+(B-B)' => [
-        qr{ \( (?: $A \+ $B | $B \+ $A ) \) - $B2 }x
-        => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
+    # (X + A) - X => (X - X) + A
+    # (A + X) - X => (X - X) + A
+    '(X+A)-X|(A+X)-X=>(X-X)+A' => [
+        qr{ \( (?: $X \+ $A | $A \+ $X ) \) - $X2 }x
+        => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
-    # (A + (B + C)) - C => (A + B) + (C - C)
-    # (A + (C + B)) - C => (A + B) + (C - C)
-    '(A+(B+C))-C|(A+(C+B))-C=>(A+B)+(C-C)' => [
-        qr{ \( $A \+ \( (?: $B \+ $C | $C \+ $B ) \) \) - $C2 }x
+    # (A + (X + B)) - X => (X - X) + (A + B)
+    # (A + (B + X)) - X => (X - X) + (A + B)
+    '(A+(X+B))-X|(A+(B+X))-X=>(X-X)+(A+B)' => [
+        qr{ \( $A \+ \( (?: $X \+ $B | $B \+ $X ) \) \) - $X2 }x
         => sub {
-            '(' . $+{A} . '+' . $+{B} . ')'
+            '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
-            . '(' . $+{C} . '-' . $+{C2} . ')'
+            . '(' . $+{A} . '+' . $+{B} . ')'
+        }
+    ],
+    # (X + A) - (X + B) => (X - X) + (A - B)
+    # (X + A) - (B + X) => (X - X) + (A - B)
+    # (A + X) - (X + B) => (X - X) + (A - B)
+    # (A + X) - (B + X) => (X - X) + (A - B)
+    '(X+A)-(X+B)|(X+A)-(B+X)|(A+X)-(X+B)|(A+X)-(B+X)=>(X-X)+(A-B)' => [
+        qr{
+            \( (?: $X \+ $A | $A \+ $X ) \)
+            -
+            \( (?: $X2 \+ $B | $B \+ $X2 ) \)
+        }x
+        => sub {
+            '(' . $+{X} . '-' . $+{X2} . ')'
+            . '+'
+            . '(' . $+{A} . '-' . $+{B} . ')'
         }
     ],
 
     # Multiplication by (X / X) to addition by (X - X)
-    # (A * B) / B => A + (B - B)
-    # (B * A) / B => A + (B - B)
-    '(A*B)/B|(B*A)/B=>A+(B-B)' => [
-        qr{ \( (?: $A \* $B | $B \* $A ) \) / $B2 }x
-        => sub { $+{A} . '+' . '(' . $+{B} . '-' . $+{B2} . ')' }
+    # (X * A) / X => (X - X) + A
+    # (A * X) / X => (X - X) + A
+    '(X*A)/X|(A*X)/X=>(X-X)+A' => [
+        qr{ \( (?: $X \* $A | $A \* $X ) \) / $X2 }x
+        => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
-    # (A * (B * C)) / C => (A * B) + (C - C)
-    # (A * (C * B)) / C => (A * B) + (C - C)
-    '(A*(B*C))/C|(A*(C*B))/C=>(A*B)+(C-C)' => [
-        qr{ \( $A \* \( (?: $B \* $C | $C \* $B ) \) \) / $C2 }x
+    # (A * (X * B)) / X => (X - X) + (A * B)
+    # (A * (B * X)) / X => (X - X) + (A * B)
+    '(A*(X*B))/X|(A*(B*X))/X=>(X-X)+(A*B)' => [
+        qr{ \( $A \* \( (?: $X \* $B | $B \* $X ) \) \) / $X2 }x
         => sub {
-            '(' . $+{A} . '*' . $+{B} . ')'
+            '(' . $+{X} . '-' . $+{X2} . ')'
             . '+'
-            . '(' . $+{C} . '-' . $+{C2} . ')'
+            . '(' . $+{A} . '*' . $+{B} . ')'
         }
     ],
 
@@ -404,7 +418,7 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '((0 + 0) * 1) * 1',
+        '(9+9)-(9+9)',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");
