@@ -5,7 +5,7 @@ use ntheory ('formultiperm', 'forsetproduct');
 
 require './normalize.pl';
 
-my @numbers_to_make = @ARGV || reverse(0, 1, 10, 24);
+my @numbers_to_make = @ARGV || reverse(2 .. 24);
 my $output_directory = 'solutions';
 
 my @numbers = (0 .. 9);
