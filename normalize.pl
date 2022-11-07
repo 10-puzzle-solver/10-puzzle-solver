@@ -203,8 +203,18 @@ my @rewrite_rules = (
 
     # Separation of addition by (X - X)
     # (A + X) - X => (X - X) + A
-    '(A+X)-X=>(X-X)+A' => [
-        qr{ \( $A_PLUS_X \) - $X2 }x
+    # (A - X) + X => (X - X) + A if A != X
+    '(A+X)-X|(A-X)+X=>(X-X)+A' => [
+        qr{
+            \( $A_PLUS_X \) - $X2
+            |
+            (?:
+                \( $A - $X \) \+ $X2
+                # |
+                # $X \+ \( $A - $X2 \)
+            )
+            (?(?{ eval("$+{A} - $+{X}") ne '0' }) | (*FAIL) )
+        }x
         => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
     # (A + (B + X)) - X => (X - X) + (A + B)
@@ -446,7 +456,8 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '(1*1)*(1*1)',
+        '(1+1)+(2-2)',
+        '((1+1)-2)+2',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");
