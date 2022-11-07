@@ -23,12 +23,17 @@ my $ZERO = qr{
 my $ZERO2 = qr{
     (?<ZERO2> $OPERAND ) (?(?{ eval($+{ZERO2}) eq '0' }) | (*FAIL) )
 }x;
+
 my $ONE = qr{ (?<ONE> $OPERAND ) (?(?{ eval($+{ONE}) eq '1' }) | (*FAIL) ) }x;
+my $ONE2 = qr{
+    (?<ONE2> $OPERAND ) (?(?{ eval($+{ONE2}) eq '1' }) | (*FAIL) )
+}x;
 
 my $A_PLUS_ZERO = qr{ $A \+ $ZERO | $ZERO \+ $A }x;
 my $B_PLUS_ZERO = qr{ $B \+ $ZERO | $ZERO \+ $B }x;
 
 my $A_TIMES_ONE = qr{ $A \* $ONE | $ONE \* $A }x;
+my $A_TIMES_ONE2 = qr{ $A \* $ONE2 | $ONE2 \* $A }x;
 my $B_TIMES_ONE = qr{ $B \* $ONE | $ONE \* $B }x;
 
 my $A_TIMES_ZERO = qr{ $A \* $ZERO | $ZERO \* $A }x;
@@ -187,26 +192,13 @@ my @rewrite_rules = (
     # ----------------
 
     # Subtraction by zero to addition
-    # A - 0 => A + 0
-    'A-0=>A+0' => [ qr{ $A - $ZERO }x => sub { $+{A} . '+' . $+{ZERO} } ],
+    # A - 0 => 0 + A
+    'A-0=>0+A' => [ qr{ $A - $ZERO }x => sub { $+{ZERO} . '+' . $+{A} } ],
 
     # Zero times zero to addition
     # 0 * 0 => 0 + 0
     '0*0=>0+0' => [
         qr{ $ZERO \* $ZERO2 }x => sub { $+{ZERO} . '+' . $+{ZERO2} }
-    ],
-
-    # Separation of addition by zero
-    # (A + 0) . B => 0 + (A . B)
-    # A . (B + 0) => 0 + (A . B) if not (A == 0 and . == +)
-    '(A+0).B|A.(B+0)=>0+(A.B)' => [
-        qr{
-            \( $A_PLUS_ZERO \) $OP $B
-            |
-            $A $OP \( $B_PLUS_ZERO \)
-            (?(?{ not (eval($+{A}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
-        }x
-        => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
     ],
 
     # Separation of addition by (X - X)
@@ -264,12 +256,37 @@ my @rewrite_rules = (
         }
     ],
 
+    # Multiplication by (1 * 1) to addition by (1 - 1)
+    # (A * 1) * 1 => (1 - 1) + A
+    # A * (1 * 1) => (1 - 1) + A
+    '(A*1)*1|A*(1*1)=>(1-1)+A' => [
+        qr{
+            \( $A_TIMES_ONE \) \* $ONE2 | $ONE \* \( $A_TIMES_ONE2 \)
+            |
+            $A \* \( $ONE \* $ONE2 \) | \( $ONE \* $ONE2 \) \* $A
+        }x
+        => sub { '(' . $+{ONE} . '-' . $+{ONE2} . ')' . '+' . $+{A} }
+    ],
+
+    # Separation of addition by zero
+    # (A + 0) . B => 0 + (A . B)
+    # A . (B + 0) => 0 + (A . B) if not (A == 0 and . == +)
+    '(A+0).B|A.(B+0)=>0+(A.B)' => [
+        qr{
+            \( $A_PLUS_ZERO \) $OP $B
+            |
+            $A $OP \( $B_PLUS_ZERO \)
+            (?(?{ not (eval($+{A}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
+        }x
+        => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
+    ],
+
     # Multiplication by one
     # ---------------------
 
     # Division by one to multiplication
-    # A / 1 => A * 1
-    'A/1=>A*1' => [ qr{ $A / $ONE }x => sub { $+{A} . '*' . $+{ONE} } ],
+    # A / 1 => 1 * A
+    'A/1=>1*A' => [ qr{ $A / $ONE }x => sub { $+{ONE} . '*' . $+{A} } ],
 
     # Separation of multiplication by one
     # (A * 1) . B => 1 * (A . B)
