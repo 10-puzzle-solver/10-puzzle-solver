@@ -58,7 +58,7 @@ sub compare {
     return $a cmp $b;
 }
 
-# Converts all operators in an expression to addition.
+# Replaces all operators in the expression with addition.
 sub convert_to_addition {
     my ($expression) = @_;
     $expression =~ s{ (?!\+) $OPERATOR }{+}gx;
@@ -228,8 +228,13 @@ my @rewrite_rules = (
 
     # Multiplication by (X / X) to addition by (X - X)
     # (A * X) / X => (X - X) + A
-    '(A*X)/X=>(X-X)+A' => [
-        qr{ \( $A_TIMES_X \) / $X2 }x
+    # A * (X / X) => (X - X) + A
+    '(A*X)/X|A*(X/X)=>(X-X)+A' => [
+        qr{
+            \( $A_TIMES_X \) / $X2
+            |
+            $A \* \( $X / $X2 \) | \( $X / $X2 \) \* $A
+        }x
         => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
     ],
     # (A * (B * X)) / X => (X - X) + (A * B)
@@ -258,13 +263,8 @@ my @rewrite_rules = (
 
     # Multiplication by (1 * 1) to addition by (1 - 1)
     # (A * 1) * 1 => (1 - 1) + A
-    # A * (1 * 1) => (1 - 1) + A
-    '(A*1)*1|A*(1*1)=>(1-1)+A' => [
-        qr{
-            \( $A_TIMES_ONE \) \* $ONE2 | $ONE \* \( $A_TIMES_ONE2 \)
-            |
-            $A \* \( $ONE \* $ONE2 \) | \( $ONE \* $ONE2 \) \* $A
-        }x
+    '(A*1)*1=>(1-1)+A' => [
+        qr{ \( $A_TIMES_ONE \) \* $ONE2 | $ONE \* \( $A_TIMES_ONE2 \) }x
         => sub { '(' . $+{ONE} . '-' . $+{ONE2} . ')' . '+' . $+{A} }
     ],
 
@@ -446,7 +446,7 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '(9/9)*(9/9)',
+        '(1*1)*(1*1)',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");
