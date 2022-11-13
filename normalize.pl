@@ -323,30 +323,21 @@ my @rewrite_rules = (
     ],
 
     # Negative addition to subtraction
-    # A + B => B - (-A) if A < 0 and A is multiplicative
+    # A + B => B - (-A) if A < 0
     'A+B=>B-(-A)' => [
-        qr{
-            $A \+ $B
-            (?(?{ eval($+{A}) < 0 and $+{A} =~ m{ [*/] }x }) | (*FAIL) )
-        }x
+        qr{ $A \+ $B (?(?{ eval($+{A}) < 0 }) | (*FAIL) ) }x
         => sub { $+{B} . '-' . negate($+{A}) }
     ],
-    # A + B => A - (-B) if B < 0 and B is multiplicative
+    # A + B => A - (-B) if B < 0
     'A+B=>A-(-B)' => [
-        qr{
-            $A \+ $B
-            (?(?{ eval($+{B}) < 0 and $+{B} =~ m{ [*/] }x }) | (*FAIL) )
-        }x
+        qr{ $A \+ $B (?(?{ eval($+{B}) < 0 }) | (*FAIL) ) }x
         => sub { $+{A} . '-' . negate($+{B}) }
     ],
 
     # Negative subtraction to addition
-    # A - B => A + (-B) if B < 0 and B is multiplicative
+    # A - B => A + (-B) if B < 0
     'A-B=>A+(-B)' => [
-        qr{
-            $A - $B
-            (?(?{ eval($+{B}) < 0 and $+{B} =~ m{ [*/] }x }) | (*FAIL) )
-        }x
+        qr{ $A - $B (?(?{ eval($+{B}) < 0 }) | (*FAIL) ) }x
         => sub { $+{A} . '+' . negate($+{B}) }
     ],
 
