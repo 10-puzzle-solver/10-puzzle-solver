@@ -25,8 +25,14 @@ close($fh);
 my @numbers = (0 .. 9);
 my $number_of_numbers = 4;
 
+# DEBUG
+# my $flag;
+
 for my $number_to_make (@numbers_to_make) {
-    $VERBOSE and warn("$number_to_make\n");
+    if ($VERBOSE and @numbers_to_make >= 2) {
+        warn("$number_to_make\n");
+    }
+
     my $path = sprintf("$output_directory/%03d.txt", $number_to_make);
     open(my $fh, '>', $path) or die("$path: $!");
     $fh->autoflush(1);
@@ -34,10 +40,22 @@ for my $number_to_make (@numbers_to_make) {
     my $iterator = combinations_with_repetition(\@numbers, $number_of_numbers);
     while (my $number_combination = $iterator->next()) {
         my ($a, $b, $c, $d) = @$number_combination;
+
+# DEBUG
+# if (not $flag and "$a$b$c$d" ne '1119') {
+#     next;
+# }
+# $flag = 1;
+
         my %seen;
         my @solutions;
 
         for my $expression (@expressions) {
+# DEBUG
+# if ($expression =~ m{ [*/] }x) {
+#     next;
+# }
+
             my $value = eval($expression);
 
             # Division by zero
@@ -51,6 +69,10 @@ for my $number_to_make (@numbers_to_make) {
                     $substituted_expression = negate($substituted_expression);
                     $substituted_expression =~ s{ \A \( | \) \z }{}gx;
                 }
+
+# DEBUG
+# warn("$substituted_expression\n");
+
                 my $normal_form = normalize($substituted_expression);
                 if (not exists($seen{$normal_form})) {
                     push(@solutions, $normal_form);

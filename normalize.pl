@@ -3,37 +3,37 @@ use warnings;
 
 my $VERBOSE = 0;
 
-my $NUMBER = qr{ (?!0\d) \d+ }x;
+my $NUMBER = qr{ (?! 0 \d ) \d+ }x;
 my $OPERATOR = qr{ [+\-*/] }x;
-my $OPERAND = qr{ ( $NUMBER | \( (?-1) $OPERATOR (?-1) \) ) }x;
+my $EXPRESSION = qr{ ( $NUMBER | \( (?-1) $OPERATOR (?-1) \) ) }x;
+
+my $ZERO_EXPRESSION = qr{
+    ( $EXPRESSION ) (?(?{ eval($^N) eq '0' }) | (*FAIL) )
+}x;
+my $ONE_EXPRESSION = qr{
+    ( $EXPRESSION ) (?(?{ eval($^N) eq '1' }) | (*FAIL) )
+}x;
 
 my $OP = qr{ (?<OP> $OPERATOR ) }x;
 
-my $A = qr{ (?<A> $OPERAND ) }x;
-my $B = qr{ (?<B> $OPERAND ) }x;
-my $C = qr{ (?<C> $OPERAND ) }x;
-my $X = qr{ (?<X> $OPERAND ) }x;
+my $A = qr{ (?<A> $EXPRESSION ) }x;
+my $B = qr{ (?<B> $EXPRESSION ) }x;
+my $C = qr{ (?<C> $EXPRESSION ) }x;
+my $X = qr{ (?<X> $EXPRESSION ) }x;
 my $X2 = qr{
-    (?<X2> $OPERAND ) (?(?{ eval("$+{X2} - $+{X}") eq '0' }) | (*FAIL) )
+    (?<X2> $EXPRESSION ) (?(?{ eval("($+{X2}) - ($+{X})") eq '0' }) | (*FAIL) )
 }x;
 
-my $ZERO = qr{
-    (?<ZERO> $OPERAND ) (?(?{ eval($+{ZERO}) eq '0' }) | (*FAIL) )
-}x;
-my $ZERO2 = qr{
-    (?<ZERO2> $OPERAND ) (?(?{ eval($+{ZERO2}) eq '0' }) | (*FAIL) )
-}x;
+my $ZERO = qr{ (?<ZERO> $ZERO_EXPRESSION ) }x;
+my $ZERO2 = qr{ (?<ZERO2> $ZERO_EXPRESSION ) }x;
 
-my $ONE = qr{ (?<ONE> $OPERAND ) (?(?{ eval($+{ONE}) eq '1' }) | (*FAIL) ) }x;
-my $ONE2 = qr{
-    (?<ONE2> $OPERAND ) (?(?{ eval($+{ONE2}) eq '1' }) | (*FAIL) )
-}x;
+my $ONE = qr{ (?<ONE> $ONE_EXPRESSION ) }x;
+my $ONE2 = qr{ (?<ONE2> $ONE_EXPRESSION ) }x;
 
 my $A_PLUS_ZERO = qr{ $A \+ $ZERO | $ZERO \+ $A }x;
 my $B_PLUS_ZERO = qr{ $B \+ $ZERO | $ZERO \+ $B }x;
 
 my $A_TIMES_ONE = qr{ $A \* $ONE | $ONE \* $A }x;
-my $A_TIMES_ONE2 = qr{ $A \* $ONE2 | $ONE2 \* $A }x;
 my $B_TIMES_ONE = qr{ $B \* $ONE | $ONE \* $B }x;
 
 my $A_TIMES_ZERO = qr{ $A \* $ZERO | $ZERO \* $A }x;
@@ -41,7 +41,6 @@ my $B_TIMES_ZERO = qr{ $B \* $ZERO | $ZERO \* $B }x;
 
 my $A_PLUS_X = qr{ $A \+ $X | $X \+ $A }x;
 my $B_PLUS_X = qr{ $B \+ $X | $X \+ $B }x;
-my $B_PLUS_X2 = qr{ $B \+ $X2 | $X2 \+ $B }x;
 
 my $A_TIMES_X = qr{ $A \* $X | $X \* $A }x;
 my $B_TIMES_X = qr{ $B \* $X | $X \* $B }x;
@@ -61,7 +60,7 @@ sub compare {
 # Replaces all operators in the expression with addition.
 sub convert_to_addition {
     my ($expression) = @_;
-    $expression =~ s{ (?!\+) $OPERATOR }{+}gx;
+    $expression =~ s{ (?! \+ ) $OPERATOR }{+}gx;
     return $expression;
 }
 
@@ -96,223 +95,19 @@ sub negate {
 }
 
 my @rewrite_rules = (
-    # General
-    # -------
-
-    # Commutativity
-    # B + A => A + B
-    # B * A => A * B
-    #
-    # B - A => A - B
-    # B / A => A / B
-    # if B == A
-    #
-    # if B > A lexicographically
-    'BA=>AB' => [
-        qr{
-            (?:
-                $B (?<OP> [+*] ) $A
-                |
-                $B (?<OP> [-/] ) $A
-                (?(?{ eval("$+{B} - $+{A}") eq '0' }) | (*FAIL) )
-            )
-            (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
-        }x
-        => sub { $+{A} . $+{OP} . $+{B} }
-    ],
-    # B + (A + C) => A + (B + C)
-    # B * (A * C) => A * (B * C)
-    # if B > A lexicographically
-    'B(AC)=>A(BC)' => [
-        qr{
-            $B (?<OP> [+*] ) \( $A \g{OP} $C \)
-            (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
-        }x
-        => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
-    ],
-
-    # Associativity
-    # (A + B) + C => A + (B + C) if C != 0
-    # (A * B) * C => A * (B * C) if C != 1
-    '(AB)C=>A(BC)' => [
-        qr{
-            \( $A (?<OP> [+*] ) $B \) \g{OP} $C
-            (?(?{ eval($+{C}) ne ($+{OP} eq '+' ? '0' : '1') }) | (*FAIL) )
-        }x
-        => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
-    ],
-
-    # Mixed addition and subtraction
-    # A + (B - C) => (A + B) - C if A != 0 and B != C
-    # (A - C) + B => (A + B) - C if B != 0 and A != C
-    # A - (C - B) => (A + B) - C
-    'A+(B-C)|(A-C)+B|A-(C-B)=>(A+B)-C' => [
-        qr{
-            $A \+ \( $B - $C \)
-            (?(?{
-                eval($+{A}) ne '0' and eval("$+{B} - $+{C}") ne '0'
-            }) | (*FAIL) )
-            |
-            \( $A - $C \) \+ $B
-            (?(?{
-                eval($+{B}) ne '0' and eval("$+{A} - $+{C}") ne '0'
-            }) | (*FAIL) )
-            |
-            $A - \( $C - $B \)
-        }x
-        => sub { '(' . $+{A} . '+' . $+{B} . ')' . '-' . $+{C} }
-    ],
-    # (A - B) - C => A - (B + C)
-    '(A-B)-C=>A-(B+C)' => [
-        qr{ \( $A - $B \) - $C }x
-        => sub { $+{A} . '-' . '(' . $+{B} . '+' . $+{C} . ')' }
-    ],
-
-    # Mixed multiplication and division
-    # A * (B / C) => (A * B) / C if A != 1
-    # (A / C) * B => (A * B) / C if B != 1
-    # A / (C / B) => (A * B) / C
-    'A*(B/C)|(A/C)*B|A/(C/B)=>(A*B)/C' => [
-        qr{
-            $A \* \( $B / $C \) (?(?{ eval($+{A}) ne '1' }) | (*FAIL) )
-            |
-            \( $A / $C \) \* $B (?(?{ eval($+{B}) ne '1' }) | (*FAIL) )
-            |
-            $A / \( $C / $B \)
-        }x
-        => sub { '(' . $+{A} . '*' . $+{B} . ')' . '/' . $+{C} }
-    ],
-    # (A / B) / C => A / (B * C)
-    '(A/B)/C=>A/(B*C)' => [
-        qr{ \( $A / $B \) / $C }x
-        => sub { $+{A} . '/' . '(' . $+{B} . '*' . $+{C} . ')' }
-    ],
-
-    # Addition by zero
-    # ----------------
-
     # Subtraction by zero to addition
-    # A - 0 => 0 + A
-    'A-0=>0+A' => [ qr{ $A - $ZERO }x => sub { $+{ZERO} . '+' . $+{A} } ],
+    # A - 0 => A + 0
+    'A-0=>A+0' => [ qr{ $A - $ZERO }x => sub { $+{A} . '+' . $+{ZERO} } ],
 
-    # Zero times zero to addition
+    # Multiplication of zeros to addition
     # 0 * 0 => 0 + 0
     '0*0=>0+0' => [
         qr{ $ZERO \* $ZERO2 }x => sub { $+{ZERO} . '+' . $+{ZERO2} }
     ],
 
-    # Separation of addition by (X - X)
-    # (A + X) - X => (X - X) + A
-    '(A+X)-X=>(X-X)+A' => [
-        qr{ \( $A_PLUS_X \) - $X2 }x
-        => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
-    ],
-    # (A + (B + X)) - X => (X - X) + (A + B)
-    '(A+(B+X))-X=>(X-X)+(A+B)' => [
-        qr{ \( $A \+ \( $B_PLUS_X \) \) - $X2 }x
-        => sub {
-            '(' . $+{X} . '-' . $+{X2} . ')'
-            . '+'
-            . '(' . $+{A} . '+' . $+{B} . ')'
-        }
-    ],
-    # (A + X) - (B + X) => (X - X) + (A - B)
-    '(A+X)-(B+X)=>(X-X)+(A-B)' => [
-        qr{ \( $A_PLUS_X \) - \( $B_PLUS_X2 \) }x
-        => sub {
-            '(' . $+{X} . '-' . $+{X2} . ')'
-            . '+'
-            . '(' . $+{A} . '-' . $+{B} . ')'
-        }
-    ],
-
-    # Multiplication by (X / X) to addition by (X - X)
-    # (A * X) / X => (X - X) + A
-    # A * (X / X) => (X - X) + A
-    '(A*X)/X|A*(X/X)=>(X-X)+A' => [
-        qr{
-            \( $A_TIMES_X \) / $X2
-            |
-            $A \* \( $X / $X2 \) | \( $X / $X2 \) \* $A
-        }x
-        => sub { '(' . $+{X} . '-' . $+{X2} . ')' . '+' . $+{A} }
-    ],
-    # (A * (B * X)) / X => (X - X) + (A * B)
-    '(A*(B*X))/X=>(X-X)+(A*B)' => [
-        qr{ \( $A \* \( $B_TIMES_X \) \) / $X2 }x
-        => sub {
-            '(' . $+{X} . '-' . $+{X2} . ')'
-            . '+'
-            . '(' . $+{A} . '*' . $+{B} . ')'
-        }
-    ],
-    # (A * X) / (B * X) => (X - X) + (A / B)
-    # (A / X) * (X / B) => (X - X) + (A / B)
-    '(A*X)/(B*X)|(A/X)*(X/B)=>(X-X)+(A/B)' => [
-        qr{
-            \( $A_TIMES_X \) / \( $B_TIMES_X2 \)
-            |
-            \( $A / $X \) \* \( $X2 / $B \) | \( $X / $B \) \* \( $A / $X2 \)
-        }x
-        => sub {
-            '(' . $+{X} . '-' . $+{X2} . ')'
-            . '+'
-            . '(' . $+{A} . '/' . $+{B} . ')'
-        }
-    ],
-
-    # Multiplication by (1 * 1) to addition by (1 - 1)
-    # (A * 1) * 1 => (1 - 1) + A
-    '(A*1)*1=>(1-1)+A' => [
-        qr{ \( $A_TIMES_ONE \) \* $ONE2 | $ONE \* \( $A_TIMES_ONE2 \) }x
-        => sub { '(' . $+{ONE} . '-' . $+{ONE2} . ')' . '+' . $+{A} }
-    ],
-
-    # Separation of addition by zero
-    # (A + 0) . B => 0 + (A . B)
-    # A . (B + 0) => 0 + (A . B) if not (A == 0 and . == +)
-    '(A+0).B|A.(B+0)=>0+(A.B)' => [
-        qr{
-            \( $A_PLUS_ZERO \) $OP $B
-            |
-            $A $OP \( $B_PLUS_ZERO \)
-            (?(?{ not (eval($+{A}) eq '0' and $+{OP} eq '+') }) | (*FAIL) )
-        }x
-        => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
-    ],
-
-    # Multiplication by one
-    # ---------------------
-
     # Division by one to multiplication
-    # A / 1 => 1 * A
-    'A/1=>1*A' => [ qr{ $A / $ONE }x => sub { $+{ONE} . '*' . $+{A} } ],
-
-    # Separation of multiplication by one
-    # (A * 1) . B => 1 * (A . B)
-    # if not (B == 0 and . == +) and not (B == 1 and . == *)
-    #
-    # A . (B * 1) => 1 * (A . B)
-    # if not (A == 0 and . == +) and not (A == 1 and . == *)
-    '(A*1).B|A.(B*1)=>1*(A.B)' => [
-        qr{
-            \( $A_TIMES_ONE \) $OP $B
-            (?(?{
-                not (eval($+{B}) eq '0' and $+{OP} eq '+')
-                and not (eval($+{B}) eq '1' and $+{OP} eq '*')
-            }) | (*FAIL) )
-            |
-            $A $OP \( $B_TIMES_ONE \)
-            (?(?{
-                not (eval($+{A}) eq '0' and $+{OP} eq '+')
-                and not (eval($+{A}) eq '1' and $+{OP} eq '*')
-            }) | (*FAIL) )
-        }x
-        => sub { $+{ONE} . '*' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
-    ],
-
-    # Multiplication by zero
-    # ----------------------
+    # A / 1 => A * 1
+    'A/1=>A*1' => [ qr{ $A / $ONE }x => sub { $+{A} . '*' . $+{ONE} } ],
 
     # Division where the dividend is zero to multiplication
     # 0 / A => 0 * A
@@ -323,14 +118,14 @@ my @rewrite_rules = (
     # if A has an operator other than addition
     'A*0=>0*f(A)' => [
         qr{
-            $A_TIMES_ZERO (?(?{ $+{A} =~ m{ (?!\+) $OPERATOR }x }) | (*FAIL) )
+            $A_TIMES_ZERO
+            (?(?{ $+{A} =~ m{ (?! \+ ) $OPERATOR }x }) | (*FAIL) )
         }x
         => sub { $+{ZERO} . '*' . convert_to_addition($+{A}) }
     ],
     # (A * 0) * B => 0 * convert_to_addition(A + B)
-    # A * (B * 0) => 0 * convert_to_addition(A + B)
-    '(A*0)*B|A*(B*0)=>0*f(A+B)' => [
-        qr{ \( $A_TIMES_ZERO \) \* $B | $A \* \( $B_TIMES_ZERO \) }x
+    '(A*0)*B=>0*f(A+B)' => [
+        qr{ \( $A_TIMES_ZERO \) \* $B | $B \* \( $A_TIMES_ZERO \) }x
         => sub {
             $+{ZERO}
             . '*'
@@ -338,12 +133,13 @@ my @rewrite_rules = (
         }
     ],
 
-    # Addition by zero to a factor of multiplication by zero
+    # Addition by zero to the factor of multiplication by zero
     # (A * 0) + 0' => 0 * convert_to_addition(0' + A) if 0' != "0"
     "(A*0)+0'=>0*f(0'+A)" => [
         qr{
-            (?: \( $A_TIMES_ZERO \) \+ $ZERO2 | $ZERO2 \+ \( $A_TIMES_ZERO \) )
-            (?(?{ $+{ZERO2} ne '0' }) | (*FAIL) )
+            \( $A_TIMES_ZERO \) \+ (?! 0 ) $ZERO2
+            |
+            (?! 0 ) $ZERO2 \+ \( $A_TIMES_ZERO \)
         }x
         => sub {
             $+{ZERO}
@@ -352,7 +148,7 @@ my @rewrite_rules = (
         }
     ],
 
-    # Multiplication by one to a factor of multiplication by zero
+    # Multiplication by one to the factor of multiplication by zero
     # (A * 0) + (B * 1) => (0 * convert_to_addition(1 + A)) + B
     "(A*0)+(B*1)=>(0*f(1+A))+B" => [
         qr{ \( $A_TIMES_ZERO \) \+ \( $B_TIMES_ONE \) }x
@@ -367,25 +163,190 @@ my @rewrite_rules = (
         }
     ],
 
-    # Sign
-    # ----
+    # Multiplication by (1 * 1) to addition by (1 - 1)
+    # (A * 1) * 1 => (A + 1) - 1
+    '(A*1)*1=>(A+1)-1' => [
+        qr{ \( $A_TIMES_ONE \) \* $ONE2 | $ONE2 \* \( $A_TIMES_ONE \) }x
+        => sub { '(' . $+{A} . '+' . $+{ONE} . ')' . '-' . $+{ONE2} }
+    ],
+
+    # Multiplication by (X / X) to addition by (X - X)
+    # (A * X) / X => (A + X) - X
+    # A * (X / X) => (A + X) - X
+    '(A*X)/X|A*(X/X)=>(A+X)-X' => [
+        qr{
+            \( $A_TIMES_X \) / $X2
+            |
+            $A \* \( $X / $X2 \) | \( $X / $X2 \) \* $A
+        }x
+        => sub { '(' . $+{A} . '+' . $+{X} . ')' . '-' . $+{X2} }
+    ],
+    # (A * (B * X)) / X => ((A * B) + X) - X
+    '(A*(B*X))/X=>((A*B)+X)-X' => [
+        qr{ \( $A \* \( $B_TIMES_X \) \) / $X2 }x
+        => sub {
+            '(' . '(' . $+{A} . '*' . $+{B} . ')' . '+' . $+{X} . ')'
+            . '-'
+            . $+{X2}
+        }
+    ],
+    # (A * X) / (B * X) => ((A / B) + X) - X
+    # (A / X) * (X / B) => ((A / B) + X) - X
+    '(A*X)/(B*X)|(A/X)*(X/B)=>((A/B)+X)-X' => [
+        qr{
+            \( $A_TIMES_X \) / \( $B_TIMES_X2 \)
+            |
+            \( $A / $X \) \* \( $X2 / $B \) | \( $X / $B \) \* \( $A / $X2 \)
+        }x
+        => sub {
+            '(' . '(' . $+{A} . '/' . $+{B} . ')' . '+' . $+{X} . ')'
+            . '-'
+            . $+{X2}
+        }
+    ],
+
+    # Separation of addition by zero
+    # (A + 0) . B => 0 + (A . B) if not (B == 0 and . == +)
+    # A . (B + 0) => 0 + (A . B) if not (A == 0 and . == +)
+    '(A+0).B|A.(B+0)=>0+(A.B)' => [
+        qr{
+            \( $A_PLUS_ZERO \) (?! \+ $ZERO_EXPRESSION ) $OP $B
+            |
+            (?! $ZERO_EXPRESSION \+ ) $A $OP \( $B_PLUS_ZERO \)
+        }x
+        => sub { $+{ZERO} . '+' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
+    ],
+
+    # Separation of multiplication by one
+    # (A * 1) . B => 1 * (A . B)
+    # if not (B == 0 and . == +) and not (B == 1 and . == *)
+    #
+    # A . (B * 1) => 1 * (A . B)
+    # if not (A == 0 and . == +) and not (A == 1 and . == *)
+    '(A*1).B|A.(B*1)=>1*(A.B)' => [
+        qr{
+            \( $A_TIMES_ONE \)
+            (?! \+ $ZERO_EXPRESSION | \* $ONE_EXPRESSION ) $OP $B
+            |
+            (?! $ZERO_EXPRESSION \+ | $ONE_EXPRESSION \* ) $A $OP
+            \( $B_TIMES_ONE \)
+        }x
+        => sub { $+{ONE} . '*' . '(' . $+{A} . $+{OP} . $+{B} . ')' }
+    ],
+
+    # Commutativity
+    # B + A => A + B
+    # B * A => A * B
+    # if B > A lexicographically
+    'BA=>AB' => [
+        qr{
+            $B (?<OP> [+*] ) $A (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
+        }x
+        => sub { $+{A} . $+{OP} . $+{B} }
+    ],
+    # B + (A + C) => A + (B + C)
+    # B * (A * C) => A * (B * C)
+    # if B > A lexicographically
+    'B(AC)=>A(BC)' => [
+        qr{
+            $B (?<OP> [+*] ) \( $A \g{OP} $C \)
+            (?(?{ compare($+{B}, $+{A}) == 1 }) | (*FAIL) )
+        }x
+        => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
+    ],
+
+    # Associativity of addition and multiplication
+    # (A + B) + C => A + (B + C) if C != 0
+    # (A * B) * C => A * (B * C) if C != 1
+    '(AB)C=>A(BC)' => [
+        qr{
+            \( $A (?<OP> [+*] ) $B \)
+            (?! \+ $ZERO_EXPRESSION | \* $ONE_EXPRESSION ) \g{OP} $C
+        }x
+        => sub { $+{A} . $+{OP} . '(' . $+{B} . $+{OP} . $+{C} . ')' }
+    ],
+
+    # Associativity of mixed addition and subtraction
+    # A + (B - C) => (A + B) - C if A != 0
+    # A - (C - B) => (A + B) - C
+    'A+(B-C)|A-(C-B)=>(A+B)-C' => [
+        qr{
+            (?! $ZERO_EXPRESSION ) $A \+ \( $B - $C \)
+            |
+            \( $B - $C \) \+ (?! $ZERO_EXPRESSION ) $A
+            |
+            $A - \( $C - $B \)
+        }x
+        => sub { '(' . $+{A} . '+' . $+{B} . ')' . '-' . $+{C} }
+    ],
+    # (A - B) - C => A - (B + C)
+    '(A-B)-C=>A-(B+C)' => [
+        qr{ \( $A - $B \) - $C }x
+        => sub { $+{A} . '-' . '(' . $+{B} . '+' . $+{C} . ')' }
+    ],
+
+    # Associativity of mixed multiplication and division
+    # A * (B / C) => (A * B) / C if A != 1
+    # A / (C / B) => (A * B) / C
+    'A*(B/C)|A/(C/B)=>(A*B)/C' => [
+        qr{
+            (?! $ONE_EXPRESSION ) $A \* \( $B / $C \)
+            |
+            \( $B / $C \) \* (?! $ONE_EXPRESSION ) $A
+            |
+            $A / \( $C / $B \)
+        }x
+        => sub { '(' . $+{A} . '*' . $+{B} . ')' . '/' . $+{C} }
+    ],
+    # (A / B) / C => A / (B * C)
+    '(A/B)/C=>A/(B*C)' => [
+        qr{ \( $A / $B \) / $C }x
+        => sub { $+{A} . '/' . '(' . $+{B} . '*' . $+{C} . ')' }
+    ],
+
+    # Separation of addition by (X - X) from the operands of multiplication and
+    # division
+    # ((A + X) - X) . B => ((A . B) + X) - X if B != 1
+    # A . ((B + X) - X) => ((A . B) + X) - X if A != 1
+    # if . == * or /
+    '((A+X)-X).B|A.((B+X)-X)=>((A.B)+X)-X' => [
+        qr{
+            \( \( $A_PLUS_X \) - $X2 \) (?<OP> [*/] ) (?! $ONE_EXPRESSION ) $B
+            |
+            (?! $ONE_EXPRESSION ) $A (?<OP> [*/] ) \( \( $B_PLUS_X \) - $X2 \)
+        }x
+        => sub {
+            '(' . '(' . $+{A} . $+{OP} . $+{B} . ')' . '+' . $+{X} . ')'
+            . '-'
+            . $+{X2}
+        }
+    ],
 
     # Negative addition to subtraction
-    # A + B => B - (-A) if A < 0
+    # A + B => B - (-A) if A < 0 and A is multiplicative
     'A+B=>B-(-A)' => [
-        qr{ $A \+ $B (?(?{ eval($+{A}) < 0 }) | (*FAIL) ) }x
+        qr{
+            $A \+ $B
+            (?(?{ eval($+{A}) < 0 and $+{A} =~ m{ [*/] }x }) | (*FAIL) )
+        }x
         => sub { $+{B} . '-' . negate($+{A}) }
     ],
-    # A + B => A - (-B) if B < 0
+    # A + B => A - (-B) if B < 0 and B is multiplicative
     'A+B=>A-(-B)' => [
-        qr{ $A \+ $B (?(?{ eval($+{B}) < 0 }) | (*FAIL) ) }x
+        qr{
+            $A \+ $B
+            (?(?{ eval($+{B}) < 0 and $+{B} =~ m{ [*/] }x }) | (*FAIL) )
+        }x
         => sub { $+{A} . '-' . negate($+{B}) }
     ],
 
     # Negative subtraction to addition
-    # A - B => A + (-B) if B < 0
+    # A - B => A + (-B) if B < 0 and B is multiplicative
     'A-B=>A+(-B)' => [
-        qr{ $A - $B (?(?{ eval($+{B}) < 0 }) | (*FAIL) ) }x
+        qr{
+            $A - $B
+            (?(?{ eval($+{B}) < 0 and $+{B} =~ m{ [*/] }x }) | (*FAIL) )
+        }x
         => sub { $+{A} . '+' . negate($+{B}) }
     ],
 
@@ -446,8 +407,7 @@ if (not caller()) {
     $VERBOSE = 1;
 
     my @expressions = (
-        '(1+1)+(2-2)',
-        '((1+1)-2)+2',
+        '((1+1)-1)*9',
     );
     for my $expression (@expressions) {
         $VERBOSE and warn("$expression\n");
