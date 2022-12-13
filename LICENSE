@@ -1,6 +1,6 @@
 This is free software; you can redistribute it and/or modify it under
-the same terms as the Perl 5 programming language system itself: under
-the terms of either:
+the same terms as the Perl 5 programming language system itself,
+either:
 
 a) the GNU General Public License as published by the Free
    Software Foundation; either version 1, or (at your option) any
@@ -260,6 +260,10 @@ necessary.  Here a sample; alter the names:
 
 That's all there is to it!
 
+--- end of The GNU General Public License, Version 1, February 1989 ---
+
+
+
 
 --- The Artistic License 1.0 ---
 
@@ -390,3 +394,5 @@ IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
 WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
                                 The End
+
+--- end of The Artistic License 1.0 ---
